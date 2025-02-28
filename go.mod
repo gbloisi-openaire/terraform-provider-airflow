@@ -1,6 +1,8 @@
 module github.com/drfaust92/terraform-provider-airflow
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.0
 
 require (
 	github.com/apache/airflow-client-go/airflow v0.0.0-20230210234754-8ce0b39cfbb2
