@@ -18,7 +18,7 @@ func init() {
 }
 
 func TestProvider(t *testing.T) {
-	if err := AirflowProvider().InternalValidate(); err != nil {
+	if err := testAccProvider.InternalValidate(); err != nil {
 		t.Fatalf("err: %s", err)
 	}
 }
