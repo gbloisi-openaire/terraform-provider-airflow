@@ -62,12 +62,12 @@ func testAccCheckAirflowDagCheckDestroy(s *terraform.State) error {
 			continue
 		}
 
-		dag, res, err := client.ApiClient.DAGApi.GetDag(client.AuthContext, rs.Primary.ID).Execute()
+		dag, res, err := client.ApiClient.DAGAPI.GetDag(client.AuthContext, rs.Primary.ID).Execute()
 		if err == nil {
 			deleteDag, _ := strconv.ParseBool(rs.Primary.Attributes["delete_dag"])
 
 			if deleteDag {
-				if *dag.DagId == rs.Primary.ID {
+				if dag.DagId == rs.Primary.ID {
 					return fmt.Errorf("Airflow Dag (%s) still exists.", rs.Primary.ID)
 				}
 			}

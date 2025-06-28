@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/apache/airflow-client-go/airflow"
+	"github.com/gbloisi-openaire/airflow-client-go/airflow"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -51,24 +51,27 @@ func resourceDagRun() *schema.Resource {
 
 func resourceDagRunCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	pcfg := m.(ProviderConfig)
-	client := pcfg.ApiClient.DAGRunApi
+	client := pcfg.ApiClient.DagRunAPI
 
 	dagId := d.Get("dag_id").(string)
-	dagRun := *airflow.NewDAGRunWithDefaults()
+	dagRun := *airflow.NewTriggerDAGRunPostBodyWithDefaults()
 
 	if v, ok := d.GetOk("dag_run_id"); ok {
-		dagRun.SetDagRunId(v.(string))
+		grid := v.(string)
+
+		dagRun.SetDagRunId(airflow.DagRunId{
+			String: &grid})
 	}
 
 	if v, ok := d.GetOk("conf"); ok {
 		dagRun.SetConf(v.(map[string]interface{}))
 	}
 
-	res, _, err := client.PostDagRun(pcfg.AuthContext, dagId).DAGRun(dagRun).Execute()
+	res, _, err := client.TriggerDagRun(pcfg.AuthContext, dagId).TriggerDAGRunPostBody(dagRun).Execute()
 	if err != nil {
 		return diag.Errorf("failed to create Dag Run `%s` from Airflow: %s", dagId, err)
 	}
-	d.SetId(fmt.Sprintf("%s:%s", dagId, *res.DagRunId.Get()))
+	d.SetId(fmt.Sprintf("%s:%s", dagId, res.DagRunId))
 
 	stateConf := &resource.StateChangeConf{
 		Pending: []string{"queued", "running", "success"},
@@ -87,7 +90,7 @@ func resourceDagRunCreate(ctx context.Context, d *schema.ResourceData, m interfa
 
 func resourceDagRunRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	pcfg := m.(ProviderConfig)
-	client := pcfg.ApiClient.DAGRunApi
+	client := pcfg.ApiClient.DagRunAPI
 
 	dagId, dagRunId, err := airflowDagRunId(d.Id())
 	if err != nil {
@@ -104,7 +107,7 @@ func resourceDagRunRead(ctx context.Context, d *schema.ResourceData, m interface
 	}
 
 	d.Set("dag_id", dagRun.DagId)
-	d.Set("dag_run_id", dagRun.DagRunId.Get())
+	d.Set("dag_run_id", dagRun.DagRunId)
 	d.Set("conf", dagRun.Conf)
 	d.Set("state", dagRun.State)
 
@@ -113,7 +116,7 @@ func resourceDagRunRead(ctx context.Context, d *schema.ResourceData, m interface
 
 func resourceDagRunDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	pcfg := m.(ProviderConfig)
-	client := pcfg.ApiClient.DAGRunApi
+	client := pcfg.ApiClient.DagRunAPI
 
 	dagId, dagRunId, err := airflowDagRunId(d.Id())
 	if err != nil {
@@ -142,7 +145,7 @@ func airflowDagRunId(id string) (string, string, error) {
 	return parts[0], parts[1], nil
 }
 
-func resourceDagRunStateRefreshFunc(id string, pcfg context.Context, client *airflow.DAGRunApiService) resource.StateRefreshFunc {
+func resourceDagRunStateRefreshFunc(id string, pcfg context.Context, client *airflow.DagRunAPIService) resource.StateRefreshFunc {
 	return func() (interface{}, string, error) {
 		dagId, dagRunId, err := airflowDagRunId(id)
 		if err != nil {

@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"github.com/apache/airflow-client-go/airflow"
+	"github.com/gbloisi-openaire/airflow-client-go/airflow"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -65,11 +65,13 @@ func resourceDagUpdate(ctx context.Context, d *schema.ResourceData, m interface{
 	client := pcfg.ApiClient
 
 	dagId := d.Get("dag_id").(string)
-	dagApi := client.DAGApi
-	dag := *airflow.NewDAG()
+	dagApi := client.DAGAPI
+	dag := airflow.DAGPatchBody{
+		IsPaused: d.Get("is_paused").(bool),
+	}
 	dag.SetIsPaused(d.Get("is_paused").(bool))
 
-	_, res, err := dagApi.PatchDag(pcfg.AuthContext, dagId).DAG(dag).Execute()
+	_, res, err := dagApi.PatchDag(pcfg.AuthContext, dagId).DAGPatchBody(dag).Execute()
 	if res.StatusCode != 200 {
 		return diag.Errorf("failed to update DAG `%s` from Airflow: %s", dagId, err)
 	}
@@ -82,7 +84,7 @@ func resourceDagRead(ctx context.Context, d *schema.ResourceData, m interface{})
 	pcfg := m.(ProviderConfig)
 	client := pcfg.ApiClient
 
-	DAG, resp, err := client.DAGApi.GetDag(pcfg.AuthContext, d.Id()).Execute()
+	DAG, resp, err := client.DAGAPI.GetDag(pcfg.AuthContext, d.Id()).Execute()
 	if resp != nil && resp.StatusCode == 404 {
 		d.SetId("")
 		return nil
@@ -92,23 +94,24 @@ func resourceDagRead(ctx context.Context, d *schema.ResourceData, m interface{})
 	}
 
 	d.Set("dag_id", DAG.DagId)
-	d.Set("is_paused", DAG.IsPaused.Get())
-	d.Set("is_active", DAG.IsActive.Get())
-	d.Set("is_subdag", DAG.IsSubdag)
+	d.Set("is_paused", DAG.IsPaused)
+	d.Set("is_active", !DAG.IsPaused && !DAG.IsStale)
+	//d.Set("is_subdag", DAG.IsSubdag)
 	d.Set("description", DAG.Description.Get())
 	d.Set("file_token", DAG.FileToken)
 	d.Set("fileloc", DAG.Fileloc)
-	d.Set("root_dag_id", DAG.RootDagId.Get())
+	//d.Set("root_dag_id", DAG.RootDagId.Get())
 
 	return nil
 }
 
 func resourceDagDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	pcfg := m.(ProviderConfig)
-	client := pcfg.ApiClient.DAGApi
+	client := pcfg.ApiClient.DAGAPI
 
 	if d.Get("delete_dag").(bool) {
-		resp, err := client.DeleteDag(pcfg.AuthContext, d.Id()).Execute()
+
+		_, resp, err := client.DeleteDag(pcfg.AuthContext, d.Id()).Execute()
 		if err != nil {
 			return diag.Errorf("failed to delete DAG `%s` from Airflow: %s", d.Id(), err)
 		}

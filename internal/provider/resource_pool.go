@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"github.com/apache/airflow-client-go/airflow"
+	"github.com/gbloisi-openaire/airflow-client-go/airflow"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -53,17 +53,36 @@ func resourcePoolCreate(ctx context.Context, d *schema.ResourceData, m interface
 
 	name := d.Get("name").(string)
 	slots := int32(d.Get("slots").(int))
-	varApi := client.PoolApi
+	varApi := client.PoolAPI
 
-	pool := airflow.Pool{
-		Name:  &name,
-		Slots: &slots,
+	pool := airflow.PoolBody{
+		Name:  name,
+		Slots: slots,
 	}
 
-	_, _, err := varApi.PostPool(pcfg.AuthContext).Pool(pool).Execute()
+	_, resp, err := varApi.PostPool(pcfg.AuthContext).PoolBody(pool).Execute()
 	if err != nil {
+		if resp != nil && resp.StatusCode == 409 {
+			// Try to fetch the existing pool to adopt it
+			existingPool, _, getErr := varApi.GetPool(pcfg.AuthContext, name).Execute()
+			if getErr != nil {
+				return diag.Errorf("pool `%s` already exists, but failed to fetch it: %s", name, getErr)
+			}
+
+			// Adopt the existing pool
+			d.SetId(existingPool.Name)
+
+			// Only update if slots differ
+			if existingPool.Slots != slots {
+				return resourcePoolUpdate(ctx, d, m)
+			}
+
+			return resourcePoolRead(ctx, d, m)
+		}
+
 		return diag.Errorf("failed to create pool `%s` from Airflow: %s", name, err)
 	}
+
 	d.SetId(name)
 
 	return resourcePoolRead(ctx, d, m)
@@ -73,7 +92,7 @@ func resourcePoolRead(ctx context.Context, d *schema.ResourceData, m interface{}
 	pcfg := m.(ProviderConfig)
 	client := pcfg.ApiClient
 
-	pool, resp, err := client.PoolApi.GetPool(pcfg.AuthContext, d.Id()).Execute()
+	pool, resp, err := client.PoolAPI.GetPool(pcfg.AuthContext, d.Id()).Execute()
 	if resp != nil && resp.StatusCode == 404 {
 		d.SetId("")
 		return nil
@@ -87,7 +106,7 @@ func resourcePoolRead(ctx context.Context, d *schema.ResourceData, m interface{}
 	d.Set("occupied_slots", pool.OccupiedSlots)
 	d.Set("queued_slots", pool.QueuedSlots)
 	d.Set("open_slots", pool.OpenSlots)
-	d.Set("used_slots", pool.UsedSlots)
+	d.Set("used_slots", pool.RunningSlots)
 
 	return nil
 }
@@ -99,12 +118,11 @@ func resourcePoolUpdate(ctx context.Context, d *schema.ResourceData, m interface
 	slots := int32(d.Get("slots").(int))
 	name := d.Id()
 
-	pool := airflow.Pool{
-		Name:  &name,
-		Slots: &slots,
+	pool := airflow.PoolPatchBody{
+		Slots: *airflow.NewNullableInt32(&slots),
 	}
 
-	_, _, err := client.PoolApi.PatchPool(pcfg.AuthContext, name).Pool(pool).Execute()
+	_, _, err := client.PoolAPI.PatchPool(pcfg.AuthContext, name).PoolPatchBody(pool).UpdateMask([]string{"slots"}).Execute()
 	if err != nil {
 		return diag.Errorf("failed to update pool `%s` from Airflow: %s", name, err)
 	}
@@ -116,7 +134,7 @@ func resourcePoolDelete(ctx context.Context, d *schema.ResourceData, m interface
 	pcfg := m.(ProviderConfig)
 	client := pcfg.ApiClient
 
-	resp, err := client.PoolApi.DeletePool(pcfg.AuthContext, d.Id()).Execute()
+	resp, err := client.PoolAPI.DeletePool(pcfg.AuthContext, d.Id()).Execute()
 	if err != nil {
 		return diag.Errorf("failed to delete pool `%s` from Airflow: %s", d.Id(), err)
 	}

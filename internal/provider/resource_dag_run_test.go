@@ -104,9 +104,9 @@ func testAccCheckAirflowDagRunCheckDestroy(s *terraform.State) error {
 			return err
 		}
 
-		dagRun, res, err := client.ApiClient.DAGRunApi.GetDagRun(client.AuthContext, dagId, dagRunId).Execute()
+		dagRun, res, err := client.ApiClient.DagRunAPI.GetDagRun(client.AuthContext, dagId, dagRunId).Execute()
 		if err == nil {
-			if *dagRun.DagRunId.Get() == dagRunId {
+			if dagRun.DagRunId == dagRunId {
 				return fmt.Errorf("Airflow DagRun (%s) still exists.", rs.Primary.ID)
 			}
 		}

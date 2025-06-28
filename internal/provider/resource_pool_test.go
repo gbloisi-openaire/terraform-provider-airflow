@@ -51,9 +51,9 @@ func testAccCheckAirflowPoolCheckDestroy(s *terraform.State) error {
 			continue
 		}
 
-		variable, res, err := client.ApiClient.PoolApi.GetPool(client.AuthContext, rs.Primary.ID).Execute()
+		variable, res, err := client.ApiClient.PoolAPI.GetPool(client.AuthContext, rs.Primary.ID).Execute()
 		if err == nil {
-			if *variable.Name == rs.Primary.ID {
+			if variable.Name == rs.Primary.ID {
 				return fmt.Errorf("Airflow Pool (%s) still exists.", rs.Primary.ID)
 			}
 		}

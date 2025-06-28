@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/apache/airflow-client-go/airflow"
+	"github.com/gbloisi-openaire/airflow-client-go/airflow"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
@@ -89,10 +89,10 @@ func resourceConnectionCreate(ctx context.Context, d *schema.ResourceData, m int
 	connId := d.Get("connection_id").(string)
 	connType := d.Get("conn_type").(string)
 
-	conn := airflow.Connection{
-		ConnectionId: &connId,
-		ConnType:     &connType,
-	}
+	conn := airflow.NewConnectionBody(
+		connId,
+		connType,
+	)
 
 	if v, ok := d.GetOk("host"); ok {
 		conn.SetHost(v.(string))
@@ -120,10 +120,24 @@ func resourceConnectionCreate(ctx context.Context, d *schema.ResourceData, m int
 		conn.SetExtra(v.(string))
 	}
 
-	connApi := client.ConnectionApi
+	connApi := client.ConnectionAPI
 
-	_, _, err := connApi.PostConnection(pcfg.AuthContext).Connection(conn).Execute()
+	_, res, err := connApi.PostConnection(pcfg.AuthContext).ConnectionBody(*conn).Execute()
 	if err != nil {
+		if res != nil && res.StatusCode == 409 {
+			// Try to fetch the existing pool to adopt it
+			existingConnection, _, getErr := connApi.GetConnection(pcfg.AuthContext, connId).Execute()
+			if getErr != nil {
+				return diag.Errorf("connection `%s` already exists, but failed to fetch it: %s", connId, getErr)
+			}
+
+			// Adopt the existing variable
+			d.SetId(existingConnection.ConnectionId)
+
+			// Always try to update to be indempotent
+			return resourceConnectionUpdate(ctx, d, m)
+		}
+
 		return diag.Errorf("failed to create connection `%s` from Airflow: %s", connId, err)
 	}
 	d.SetId(connId)
@@ -134,7 +148,7 @@ func resourceConnectionCreate(ctx context.Context, d *schema.ResourceData, m int
 func resourceConnectionRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	pcfg := m.(ProviderConfig)
 	client := pcfg.ApiClient
-	connection, resp, err := client.ConnectionApi.GetConnection(pcfg.AuthContext, d.Id()).Execute()
+	connection, resp, err := client.ConnectionAPI.GetConnection(pcfg.AuthContext, d.Id()).Execute()
 	if resp != nil && resp.StatusCode == 404 {
 		d.SetId("")
 		return nil
@@ -167,10 +181,10 @@ func resourceConnectionUpdate(ctx context.Context, d *schema.ResourceData, m int
 	connId := d.Id()
 	connType := d.Get("conn_type").(string)
 
-	conn := airflow.Connection{
-		ConnectionId: &connId,
-		ConnType:     &connType,
-	}
+	conn := airflow.NewConnectionBody(
+		connId,
+		connType,
+	)
 
 	if v, ok := d.GetOk("host"); ok {
 		conn.SetHost(v.(string))
@@ -212,7 +226,7 @@ func resourceConnectionUpdate(ctx context.Context, d *schema.ResourceData, m int
 		conn.SetExtraNil()
 	}
 
-	_, _, err := client.ConnectionApi.PatchConnection(pcfg.AuthContext, connId).Connection(conn).Execute()
+	_, _, err := client.ConnectionAPI.PatchConnection(pcfg.AuthContext, connId).ConnectionBody(*conn).Execute()
 	if err != nil {
 		return diag.Errorf("failed to update connection `%s` from Airflow: %s", connId, err)
 	}
@@ -224,7 +238,7 @@ func resourceConnectionDelete(ctx context.Context, d *schema.ResourceData, m int
 	pcfg := m.(ProviderConfig)
 	client := pcfg.ApiClient
 
-	resp, err := client.ConnectionApi.DeleteConnection(pcfg.AuthContext, d.Id()).Execute()
+	resp, err := client.ConnectionAPI.DeleteConnection(pcfg.AuthContext, d.Id()).Execute()
 	if err != nil {
 		return diag.Errorf("failed to delete connection `%s` from Airflow: %s", d.Id(), err)
 	}

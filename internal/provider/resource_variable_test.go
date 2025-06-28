@@ -93,9 +93,9 @@ func testAccCheckAirflowVariableCheckDestroy(s *terraform.State) error {
 			continue
 		}
 
-		variable, res, err := client.ApiClient.VariableApi.GetVariable(client.AuthContext, rs.Primary.ID).Execute()
+		variable, res, err := client.ApiClient.VariableAPI.GetVariable(client.AuthContext, rs.Primary.ID).Execute()
 		if err == nil {
-			if *variable.Key == rs.Primary.ID {
+			if variable.Key == rs.Primary.ID {
 				return fmt.Errorf("Airflow Variable (%s) still exists.", rs.Primary.ID)
 			}
 		}

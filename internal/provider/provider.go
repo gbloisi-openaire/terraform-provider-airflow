@@ -3,17 +3,19 @@ package provider
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/apache/airflow-client-go/airflow"
+	"github.com/gbloisi-openaire/airflow-client-go/airflow"
+	auth "github.com/gbloisi-openaire/airflow-client-go/auth"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/logging"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+
+	"golang.org/x/oauth2"
 )
 
 type ProviderConfig struct {
@@ -68,8 +70,6 @@ func AirflowProvider() *schema.Provider {
 			"airflow_dag_run":    resourceDagRun(),
 			"airflow_variable":   resourceVariable(),
 			"airflow_pool":       resourcePool(),
-			"airflow_role":       resourceRole(),
-			"airflow_user":       resourceUser(),
 		},
 		// ConfigureContextFunc: providerConfigure,
 	}
@@ -103,8 +103,25 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		return nil, diag.Errorf("invalid base_endpoint: %s", err)
 	}
 
+	//path := strings.TrimSuffix(u.Path, "/")
+
+	clientConf := &airflow.Configuration{
+		Scheme:     u.Scheme,
+		Host:       u.Host,
+		Debug:      true,
+		HTTPClient: client,
+		Servers: airflow.ServerConfigurations{
+			{
+				URL:         strings.TrimSuffix(endpoint, "/"),
+				Description: "Apache Airflow Stable API.",
+			},
+		},
+	}
+
 	if v, ok := d.GetOk("oauth2_token"); ok {
-		ctx = context.WithValue(ctx, airflow.ContextAccessToken, v)
+		ctx = context.WithValue(ctx, airflow.ContextOAuth2, oauth2.StaticTokenSource(&oauth2.Token{
+			AccessToken: v.(string),
+		}))
 	}
 
 	if username, ok := d.GetOk("username"); ok {
@@ -114,26 +131,32 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		}
 		log.Printf("[DEBUG] Using API Basic Auth")
 
-		cred := airflow.BasicAuth{
-			UserName: username.(string),
-			Password: password.(string),
-		}
-		ctx = context.WithValue(ctx, airflow.ContextBasicAuth, cred)
-	}
+		loginBody := *auth.NewLoginBody(username.(string), password.(string))
 
-	path := strings.TrimSuffix(u.Path, "/")
-
-	clientConf := &airflow.Configuration{
-		Scheme:     u.Scheme,
-		Host:       u.Host,
-		Debug:      true,
-		HTTPClient: client,
-		Servers: airflow.ServerConfigurations{
-			{
-				URL:         fmt.Sprint(path, "/api/v1"),
-				Description: "Apache Airflow Stable API.",
+		configuration := &auth.Configuration{
+			Scheme:     u.Scheme,
+			Host:       u.Host,
+			Debug:      true,
+			HTTPClient: client,
+			Servers: auth.ServerConfigurations{
+				{
+					URL:         strings.TrimSuffix(endpoint, "/"),
+					Description: "Apache Airflow Stable API.",
+				},
 			},
-		},
+		}
+
+		apiClient := auth.NewAPIClient(configuration)
+		resp, _, err := apiClient.SimpleAuthManagerLoginAPI.CreateToken(ctx).LoginBody(loginBody).Execute()
+		if err != nil {
+			return nil, diag.Errorf("Error when calling `SimpleAuthManagerLoginAPI.CreateToken``: %v %v\n", err, endpoint)
+		}
+
+		tokenSource := oauth2.StaticTokenSource(&oauth2.Token{
+			AccessToken: resp.AccessToken,
+		})
+
+		ctx = context.WithValue(ctx, airflow.ContextOAuth2, tokenSource)
 	}
 
 	prov := ProviderConfig{

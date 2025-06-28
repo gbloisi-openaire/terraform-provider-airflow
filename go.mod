@@ -1,11 +1,12 @@
-module github.com/drfaust92/terraform-provider-airflow
+module github.com/gbloisi-openaire/terraform-provider-airflow
 
 go 1.23.0
 
 toolchain go1.24.0
 
 require (
-	github.com/apache/airflow-client-go/airflow v0.0.0-20230210234754-8ce0b39cfbb2
+	github.com/gbloisi-openaire/airflow-client-go/airflow v0.0.0-20250627192802-a6e7f40e9b8e
+	github.com/gbloisi-openaire/airflow-client-go/auth v0.0.0-20250627192802-a6e7f40e9b8e
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.36.1
 )
 
@@ -52,7 +53,7 @@ require (
 	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/oauth2 v0.27.0 // indirect
+	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
@@ -61,4 +62,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250227231956-55c901821b1e // indirect
 	google.golang.org/grpc v1.70.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
+	gopkg.in/validator.v2 v2.0.1 // indirect
 )

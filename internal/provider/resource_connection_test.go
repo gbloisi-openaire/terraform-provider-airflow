@@ -103,9 +103,9 @@ func testAccCheckAirflowConnectionCheckDestroy(s *terraform.State) error {
 			continue
 		}
 
-		conn, res, err := client.ApiClient.ConnectionApi.GetConnection(client.AuthContext, rs.Primary.ID).Execute()
+		conn, res, err := client.ApiClient.ConnectionAPI.GetConnection(client.AuthContext, rs.Primary.ID).Execute()
 		if err == nil {
-			if *conn.ConnectionId == rs.Primary.ID {
+			if conn.ConnectionId == rs.Primary.ID {
 				return fmt.Errorf("Airflow Connection (%s) still exists.", rs.Primary.ID)
 			}
 		}

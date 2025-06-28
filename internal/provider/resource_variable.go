@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"github.com/apache/airflow-client-go/airflow"
+	"github.com/gbloisi-openaire/airflow-client-go/airflow"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -42,21 +42,40 @@ func resourceVariableCreate(ctx context.Context, d *schema.ResourceData, m inter
 	key := d.Get("key").(string)
 	val := d.Get("value").(string)
 
-	varApi := client.VariableApi
+	varApi := client.VariableAPI
 
-	variableReq := airflow.Variable{
-		Key:   &key,
-		Value: &val,
+	variableReq := airflow.VariableBody{
+		Key:   key,
+		Value: val,
 	}
 
 	if v, ok := d.GetOk("description"); ok {
 		variableReq.SetDescription(v.(string))
 	}
 
-	_, res, err := varApi.PostVariables(pcfg.AuthContext).Variable(variableReq).Execute()
+	_, res, err := varApi.PostVariable(pcfg.AuthContext).VariableBody(variableReq).Execute()
 	if err != nil {
+		if res.StatusCode == 409 || res.Status == "409 Conflict" {
+			// Try to fetch the existing pool to adopt it
+			existingVariable, _, getErr := varApi.GetVariable(pcfg.AuthContext, key).Execute()
+			if getErr != nil {
+				return diag.Errorf("variable `%s` already exists, but failed to fetch it: %s", key, getErr)
+			}
+
+			// Adopt the existing variable
+			d.SetId(existingVariable.Key)
+
+			// Only update if values differ
+			if existingVariable.Value != variableReq.Key || existingVariable.Description != variableReq.Description {
+				return resourceVariableUpdate(ctx, d, m)
+			}
+
+			return resourceVariableRead(ctx, d, m)
+		}
+
 		return diag.Errorf("failed to create variable `%s`, Status: `%s` from Airflow: %s", key, res.Status, err)
 	}
+
 	d.SetId(key)
 
 	return resourceVariableRead(ctx, d, m)
@@ -66,7 +85,7 @@ func resourceVariableRead(ctx context.Context, d *schema.ResourceData, m interfa
 	pcfg := m.(ProviderConfig)
 	client := pcfg.ApiClient
 
-	variable, resp, err := client.VariableApi.GetVariable(pcfg.AuthContext, d.Id()).Execute()
+	variable, resp, err := client.VariableAPI.GetVariable(pcfg.AuthContext, d.Id()).Execute()
 	if resp != nil && resp.StatusCode == 404 {
 		d.SetId("")
 		return nil
@@ -89,16 +108,16 @@ func resourceVariableUpdate(ctx context.Context, d *schema.ResourceData, m inter
 	val := d.Get("value").(string)
 	key := d.Id()
 
-	variableReq := airflow.Variable{
-		Key:   &key,
-		Value: &val,
+	variableReq := airflow.VariableBody{
+		Key:   key,
+		Value: val,
 	}
 
 	if v, ok := d.GetOk("description"); ok {
 		variableReq.SetDescription(v.(string))
 	}
 
-	_, resp, err := client.VariableApi.PatchVariable(pcfg.AuthContext, key).Variable(variableReq).Execute()
+	_, resp, err := client.VariableAPI.PatchVariable(pcfg.AuthContext, key).VariableBody(variableReq).Execute()
 	if err != nil {
 		return diag.Errorf("failed to update variable `%s`, Status: `%s` from Airflow: %s", key, resp.Status, err)
 	}
@@ -110,7 +129,7 @@ func resourceVariableDelete(ctx context.Context, d *schema.ResourceData, m inter
 	pcfg := m.(ProviderConfig)
 	client := pcfg.ApiClient
 
-	resp, err := client.VariableApi.DeleteVariable(pcfg.AuthContext, d.Id()).Execute()
+	resp, err := client.VariableAPI.DeleteVariable(pcfg.AuthContext, d.Id()).Execute()
 	if err != nil {
 		return diag.Errorf("failed to delete variable `%s`, Status: `%s` from Airflow: %s", d.Id(), resp.Status, err)
 	}
