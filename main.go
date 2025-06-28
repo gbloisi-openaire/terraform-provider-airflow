@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	"github.com/drfaust92/terraform-provider-airflow/internal/provider"
+	"github.com/gbloisi-openaire/terraform-provider-airflow/internal/provider"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
 )
