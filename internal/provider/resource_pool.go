@@ -134,6 +134,11 @@ func resourcePoolDelete(ctx context.Context, d *schema.ResourceData, m interface
 	pcfg := m.(ProviderConfig)
 	client := pcfg.ApiClient
 
+	if d.Id() == "default_pool" {
+		// default pool cannot be deleted
+		return nil
+	}
+
 	resp, err := client.PoolAPI.DeletePool(pcfg.AuthContext, d.Id()).Execute()
 	if err != nil {
 		return diag.Errorf("failed to delete pool `%s` from Airflow: %s", d.Id(), err)
